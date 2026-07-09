@@ -38,3 +38,4 @@ Working signal generator. Next steps:
 I am using AI to help me with this project - I am not using it to think for me though - I am going to query it like a library,
 its going to help me use Pandas and numpy since I have not used much at all in the past.
 Furthermore using AI is a lot faster than manually searching through documentation allowing me to progress faster and recieve personalised feedback.
+For example it helped me better format my readme (which was a large paragraph beforehand - a lot more inconvenient and unclear to read)
