@@ -28,11 +28,8 @@ This loads Tesla (TSLA) historical data from `datasets/TSLA.csv`, calculates ind
 ## Status
 
 Working signal generator. Next steps:
-- Turn it into a full backtesting engine (P&L tracking, equity curve, Sharpe ratio, max drawdown)
-- Parameter optimization script
-- Multi-ticker support
-- Risk management (stop-loss, position sizing)
-
+- Implement another trading strategy after backtesting it (probably something EMA related since I have that already calculated)
+- Implement another way to measure sucesss (MDD, win loss ratio or something similiar)
 
 ## DISCLOSURE
 I am using AI to help me with this project - I am not using it to think for me though - I am going to query it like a library,
