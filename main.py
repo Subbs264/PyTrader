@@ -1,64 +1,108 @@
 import pandas as pd
 import numpy as np
-import plotly.graph_objects as go
+import optuna
+from pathlib import Path
+from indicators.SMA import sma
+from indicators.EMA import ema
+from graph import create_graph
 
 class PyTrader:
-    def __init__(self, dataset_path):
+    def __init__(self, dataset_path, long_sma=133, short_sma=116):
         self.df = pd.read_csv(dataset_path)
+        self.df.columns = [col.title() for col in self.df.columns]
+        self.df['Date'] = pd.to_datetime(self.df['Date'])
+
+        self.stock_list = []
+        self.percent_to_sell = 1
+
+        self.long_sma = long_sma
+        self.short_sma = short_sma
+
+
 
     def calculate_indicators(self):
-        self.df['SMA_20'] = self.df['Close'].rolling(window=20).mean()
-        self.df['SMA_50'] = self.df['Close'].rolling(window=50).mean()
-        self.df['EMA_10'] = self.df['Close'].ewm(span=10, adjust=False).mean()
+        self.df = sma(df=self.df, long=self.long_sma, short=self.short_sma)
+        self.df = ema(df=self.df, span=10) #    To be used later
+
 
     def remove_nans(self):
-        self.df = self.df.dropna(subset=['SMA_20', 'SMA_50'])
+        self.df = self.df.dropna(subset=[f'SMA_{self.short_sma}', f'SMA_{self.long_sma}'], ignore_index=True)
 
     def generate_signals(self):
-        self.df['POS'] = np.where(self.df['SMA_20'] > self.df['SMA_50'], 1, 0)
+        self.df['POS'] = np.where(self.df[f'SMA_{self.short_sma}'] > self.df[f'SMA_{self.long_sma}'], 1, 0)
         self.df['SIGNAL'] = self.df['POS'].diff()
         self.df['SIGNAL'] = self.df['SIGNAL'].fillna(0).astype(int)
 
-    def create_graph(self):
-        fig = go.Figure(data=[go.Candlestick(x=self.df['Date'],
-                open=self.df['Open'],
-                high=self.df['High'],
-                low=self.df['Low'],
-                close=self.df['Close'])])
+        self.df['market_return'] = self.df['Close'].pct_change()
+        self.df['strat_returns'] = self.df['POS'].shift(1) * self.df['market_return']
+        self.df['cumulative_return'] = (1 + self.df['strat_returns'].fillna(0)).cumprod()
+        self.df['cumulative_market'] = (1 + self.df['market_return'].fillna(0)).cumprod()
 
-        buy_signals = self.df[self.df['SIGNAL'] == 1]
-        sell_signals = self.df[self.df['SIGNAL'] == -1]
+        print(f'Strategy performance: {self.df['cumulative_return'].iloc[-1]}')
+        print(f'Market performance: {self.df['cumulative_market'].iloc[-1]}')
 
-        fig.add_trace(go.Scatter(
-            x=buy_signals['Date'],
-            y=buy_signals['Low'] - 5,
-            mode='markers',
-            marker=dict(symbol='triangle-up', size=12, color='green'),
-            name='Buy'
-        ))
+        if not self.df['strat_returns'].std():
+            return 0
 
-        fig.add_trace(go.Scatter(
-            x=sell_signals['Date'],
-            y=sell_signals['High'] + 5,
-            mode='markers',
-            marker=dict(symbol='triangle-down', size=12, color='red'),
-            name='Sell'
-        ))
+        mean_return = self.df['strat_returns'].mean()
+        std_return = self.df['strat_returns'].std()
+        total_years = (self.df['Date'].iloc[-1] - self.df['Date'].iloc[0]).days / 365
 
-        fig.show()
+        if total_years <= 0:
+            return 0
         
-            
+        trading_days_per_year = len(self.df) / total_years
+        daily_risk_free_rate = 0.04 / trading_days_per_year
+        sharpe_ratio = ((mean_return - daily_risk_free_rate) / std_return) * np.sqrt(trading_days_per_year)
+        print(f'Sharpe Ratio: {sharpe_ratio}')
+
+        return sharpe_ratio
+
+    
+
+def objective(trial):
+
+        long_sma = trial.suggest_int('long_sma', 50, 200)
+        short_sma = trial.suggest_int('short_sma', 5, long_sma - 1)
+
+        dir = Path('datasets')
+        sharpes = []
+
+        for dataset in dir.iterdir():
+            pytrader = PyTrader(str(dataset), long_sma=long_sma, short_sma=short_sma)
+            pytrader.calculate_indicators()
+            pytrader.remove_nans()
+
+            if pytrader.df.empty:
+                continue
+
+            sharpe_ratio = pytrader.generate_signals()
+
+            if sharpe_ratio is not None:
+                sharpes.append(sharpe_ratio)
+
+        if not sharpes:
+            return float('-inf')
+
+        return np.mean(sharpes)
+
 
 
 if __name__ == '__main__':
-    pytrader = PyTrader(dataset_path='datasets\\TSLA.csv')
+     
+    # study = optuna.create_study(direction='maximize')
+    # study.optimize(objective, n_trials=75)
+    # print(f"Best Robust Combined Score: {study.best_value:.4f}")
+    # for key, value in study.best_params.items():
+    #     print(f"  {key}: {value}")
+
+    pytrader = PyTrader(dataset_path='datasets\\WRK.csv')
     pytrader.calculate_indicators()
     pytrader.remove_nans()
     pytrader.generate_signals()
-    pytrader.df.to_csv('datasets\\testing.csv')
-    pytrader.create_graph()
+    #pytrader.df.to_csv('datasets\\testing.csv')
+    create_graph(df=pytrader.df)
 
     
-    print(pytrader.df.head(50))
-    print(pytrader.df.tail(20))
-    
+    # print(pytrader.df.head(50))
+    # print(pytrader.df.tail(20))

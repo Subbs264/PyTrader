@@ -1,0 +1,10 @@
+- create bot with simple strategy (MA crossover + EMA) //   DONE
+-Test Bot 
+
+
+
+
+NOTES:
+
+must begin counting from index 49 since removenans function makes the dataframe start from 49, not 0 (RESULTS IN POSITIONAL INDEX ISSUES)
+calculate each indivisual measure and normalise using z score (standard deviations thing) then implement weighting
